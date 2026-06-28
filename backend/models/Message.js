@@ -4,6 +4,11 @@ const mongoose = require("mongoose");
 
 const msgSchema = new mongoose.Schema(
   {
+
+
+    // ── OLD FIELDS — kept during migration, removed in cleanup phase ──────
+    // These stay until all application code has switched to conversationId4
+
     sender: {
       type: String,
       required: true,
@@ -16,36 +21,12 @@ const msgSchema = new mongoose.Schema(
       trim: true,
     },
 
-    message: {
-      type: String,
-      required: true,
-      trim: true,
-    },
+    
 
     status: {
       type: String,
       enum: ["sent", "delivered", "seen"],
       default: "sent",
-    },
-
-    type: {
-      type: String,
-      enum: ["text", "system"],
-      default: "text",
-    },
-
-    edited: {
-      type: Boolean,
-      default: false,
-    },
-
-    deleted: {
-      type: Boolean,
-      default: false,
-    },
-     sentAt: {
-      type: Date,
-      required: true,
     },
 
 
@@ -78,13 +59,47 @@ const msgSchema = new mongoose.Schema(
       default: [],
     },
 
+    // ── UNCHANGED FIELDS ──
 
 
+     // extended enum — "system" added for "Tiger added Simran to the group" etc.
+    type: {
+      type: String,
+      enum: ["text", "system"],
+      default: "text",
+    },
+
+    message: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    edited: {
+      type: Boolean,
+      default: false,
+    },
+
+    deleted: {
+      type: Boolean,
+      default: false,
+    },
+     sentAt: {
+      type: Date,
+      required: true,
+    },
   },
+
   {
     timestamps: true,
   }
 );
+
+// index for fast conversation history fetch
+msgSchema.index({ conversationId: 1, sentAt: 1 });
+
+// old index kept during migration — still needed by old code paths
+msgSchema.index({ sender: 1, receiver: 1, sentAt: 1 });
 
 
 module.exports = mongoose.model("Message", msgSchema);

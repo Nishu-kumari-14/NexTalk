@@ -1,10 +1,40 @@
 const Message = require("../models/Message.js");
 
+const Conversation = require("../models/Conversation.js");
+
 const verifyToken = require("../utils/verifyToken");
+
+
+// ── HELPER — find or create a direct conversation ────────────────────────────
+// members sorted alphabetically to prevent duplicate conversations
+// e.g. ["simran", "tiger"] always, never ["tiger", "simran"]
+async function findOrCreateDirectConversation(userA, userB) {
+  const members = [userA, userB].sort();
+ 
+  let conversation = await Conversation.findOne({
+    type: "direct",
+    members: members,
+  });
+ 
+  if (!conversation) {
+    conversation = await Conversation.create({
+      type: "direct",
+      members: members,
+      memberHistory: [
+        { username: userA, action: "joined", by: userA },
+        { username: userB, action: "joined", by: userA },
+      ],
+    });
+    console.log(`Created new conversation for [${members}]:`, conversation._id);
+  }
+ 
+  return conversation;
+}
+ 
 
 module.exports = function setupSocketHandlers(io) {
 
-  // username -> socket
+  // username -> socket-  kept for presence tracking (NOT for message routing)
   const users = {};
 
   io.on("connection", async (socket) => {
@@ -14,7 +44,7 @@ module.exports = function setupSocketHandlers(io) {
 
     console.log(`User connected: ${userId}`);
 
-    // Save socket
+    // Save socket for presence
     users[userId] = socket;
 
 
@@ -44,11 +74,16 @@ module.exports = function setupSocketHandlers(io) {
     }
 
     // Delivery acknowledgement
-   // ✅ only updates if still "sent"
+  
 socket.on("message:ack", async ({ id }) => {
   const msg = await Message.findOneAndUpdate(
     { _id: id, status: "sent" },
-    { status: "delivered" },
+    { 
+      status: "delivered" ,
+      $addToSet: { deliveredTo: userId },
+    },
+    // DUAL-WRITE: also update new deliveredTo array
+    
     { new: true }
   );
 
@@ -60,7 +95,7 @@ socket.on("message:ack", async ({ id }) => {
   }
 });
 
-    // Send message
+    // ── Send message — DUAL-WRITE ─
     socket.on(
       "message:send",
       async ({ receiver, message: msgText,sentAt }) => {
@@ -70,22 +105,46 @@ socket.on("message:ack", async ({ id }) => {
 
         try {
 
-          // Save to DB
+          // DUAL-WRITE STEP 1 — find or create Conversation
+          const conversation = await findOrCreateDirectConversation(userId, receiver);
+
+          // DUAL-WRITE STEP 2 — save Message with BOTH old and new fields
+
+          
           const newMsg = await Message.create({
+
+             // OLD fields — kept so old code paths still work
+
             sender: userId,
             receiver,
-            message: msgText,
             status: "sent",
+
+            // NEW fields — written by dual-write
+            conversationId: conversation._id,
+            deliveredTo: [],
+            seenBy: [],
+
+            // unchanged fields
+            message: msgText,
+            
             sentAt: sentAt || new Date(), // fallback to server time if missing
           });
 
           console.log("Saved:", newMsg);
 
-          // Receiver online
+          // DUAL-WRITE STEP 3 — update Conversation's last message
+          await Conversation.findByIdAndUpdate(conversation._id, {
+            lastMessage: msgText,
+            lastMessageSender: userId,
+            lastMessageAt: newMsg.sentAt,
+          });
+ 
+          console.log("Saved:", newMsg._id, "conversationId:", newMsg.conversationId);
+
+          // deliver to receiver if online
           if (users[receiver]) {
 
-            users[receiver].emit(
-              "message:receive",
+            users[receiver].emit("message:receive",
               {
                 id: newMsg._id,
                 from: userId,
@@ -95,7 +154,7 @@ socket.on("message:ack", async ({ id }) => {
             }
             
 
-          // ✅ tell sender the message was saved with its id
+         // confirm to sender
         socket.emit("message:sent", {
           id: newMsg._id,
           message: msgText,
@@ -112,18 +171,33 @@ socket.on("message:ack", async ({ id }) => {
       });
 
 
-      // ✅ seen handler — receiver opened the chat
+      // seen handler — DUAL-WRITE
     socket.on("message:seen", async ({ from }) => {
       try {
 
-        // update all unseen messages from this sender to "seen"
+        const seenAt = new Date();
+
+       
+        // update all unseen messages from this sender to seen — BOTH old and new fields
         await Message.updateMany(
           {
             sender: from,
             receiver: userId,
             status: { $in: ["sent", "delivered"] },
           },
-          { status: "seen" }
+
+          {
+
+                // OLD field
+               status: "seen",
+
+               // NEW field — add to seenBy array with timestamp
+                $addToSet: {
+                      seenBy: { username: userId, at: seenAt },
+                },
+
+          }  
+
         );
 
         // notify sender if online
