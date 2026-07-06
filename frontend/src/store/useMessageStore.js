@@ -47,10 +47,7 @@ const useMessageStore = create((set, get) => {
 
 
   
-  console.log("=== message:receive ===");
-  console.log("activeChat:", activeChat);
-  console.log("convId:", msg.conversationId?.toString());
-  console.log("match:", activeChat === msg.conversationId?.toString());
+  
 
 
     
@@ -90,7 +87,6 @@ const useMessageStore = create((set, get) => {
           _id: msg.id,
           message: msg.message,
           sender: msg.from,
-          receiver: localStorage.getItem("username"),
           status: "sent",
           sentAt: msg.sentAt,
           conversationId: msg.conversationId,
@@ -175,10 +171,6 @@ const useMessageStore = create((set, get) => {
   // now includes conversationId from server
   socket.on("message:seen", ({ by, conversationId }) => {
     const { messages } = get();
-
-    console.log("message:seen — convId:", conversationId?.toString());
-   console.log("messages keys:", Object.keys(messages));
-   
     const currentUser = localStorage.getItem("username");
     const convId = conversationId?.toString();
     const conv = messages[convId] || [];
@@ -215,9 +207,30 @@ const useMessageStore = create((set, get) => {
       const { messages } = get();
       const convId = conversationId?.toString();
       const buffered = messages[convId] || [];
+
+
+
+      // DB messages no longer carry a "status" field (removed in cleanup —
+      // see migration log Step 6). Derive it from deliveredTo/seenBy so
+      // ticks stay accurate for messages loaded on chat open.
+      // Buffered/live messages already have status set via socket events,
+      // so they pass through unchanged.
+      const dbMessagesWithStatus = dbMessages.map((m) => {
+        if (m.status) return m;
+        let status = "sent";
+        if (m.seenBy?.length > 0) {
+          status = "seen";
+        } else if (m.deliveredTo?.length > 0) {
+          status = "delivered";
+        }
+        return { ...m, status };
+      });
+ 
+
+
  
       // merge DB + buffer — deduplicate by _id
-      const merged = [...dbMessages, ...buffered];
+      const merged = [...dbMessagesWithStatus, ...buffered];
       const seen = new Set();
       const deduplicated = merged.filter((m) => {
         const id = m._id?.toString();
@@ -239,7 +252,6 @@ const useMessageStore = create((set, get) => {
 
     // Called when ChatPage unmounts — clears active chat
     clearActiveChat: () => {
-      console.log("Clearing activeChat");
        set({ activeChat: null });
     },
 
@@ -254,7 +266,6 @@ const useMessageStore = create((set, get) => {
         _id: null,
         message: text,
         sender: currentUser,
-        receiver,
         status: "sent",
         sentAt,
         conversationId,
@@ -280,7 +291,6 @@ const useMessageStore = create((set, get) => {
     // Called when ChatPage opens — marks messages as seen
     // now sends conversationId to backend
     markSeen: (from, conversationId) => {
-      console.log("markSeen called — from:", from, "conversationId:", conversationId);
       socket.emit("message:seen", { from, conversationId });
     },
  

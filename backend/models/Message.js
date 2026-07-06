@@ -5,9 +5,7 @@ const mongoose = require("mongoose");
 const msgSchema = new mongoose.Schema(
   {
 
-
-    // ── OLD FIELDS — kept during migration, removed in cleanup phase ──────
-    // These stay until all application code has switched to conversationId4
+// sender is kept — needed for message:seen queries and display
 
     sender: {
       type: String,
@@ -15,21 +13,7 @@ const msgSchema = new mongoose.Schema(
       trim: true,
     },
 
-    receiver: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
     
-
-    status: {
-      type: String,
-      enum: ["sent", "delivered", "seen"],
-      default: "sent",
-    },
-
-
     // ── NEW FIELDS — added in Phase 1, backfilled by migration script ─────
  
     // replaces sender/receiver pair as the conversation identifier
@@ -101,8 +85,7 @@ msgSchema.index({ conversationId: 1, sentAt: 1 });
 // index for unread count aggregate query
 msgSchema.index({ sender: 1, "seenBy.username": 1 });
 
-// old index kept during migration — still needed by old code paths
-msgSchema.index({ sender: 1, receiver: 1, sentAt: 1 });
+
 
 
 module.exports = mongoose.model("Message", msgSchema);

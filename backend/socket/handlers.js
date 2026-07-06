@@ -86,9 +86,8 @@ module.exports = function setupSocketHandlers(io) {
   // ── DELIVERY ACKNOWLEDGEMENT ──────────────────────────────────────────────
     socket.on("message:ack", async ({ id }) => {
       const msg = await Message.findOneAndUpdate(
-        { _id: id, status: "sent" },
+        { _id: id, deliveredTo: { $ne: userId } },
         {
-          status: "delivered",
           $addToSet: { deliveredTo: userId },
         },
         { new: true }
@@ -129,13 +128,14 @@ module.exports = function setupSocketHandlers(io) {
           
           const newMsg = await Message.create({
 
-             // OLD fields — kept so old code paths still work
+             
 
             sender: userId,
-            receiver,
-            status: "sent",
 
-            // NEW fields — written by dual-write
+            // conversationId is now the source of truth for routing —
+            // receiver stays a function param (used above to find/create
+            // the conversation and join rooms) but is no longer stored
+  
             conversationId: conversation._id,
             deliveredTo: [],
             seenBy: [],
@@ -174,9 +174,7 @@ module.exports = function setupSocketHandlers(io) {
         socket.emit("message:sent", {
           id: newMsg._id,
           message: msgText,
-          receiver,
           conversationId: newMsg.conversationId,
-          status: "sent",
           sentAt: newMsg.sentAt,
         });
             
@@ -201,10 +199,7 @@ module.exports = function setupSocketHandlers(io) {
             "seenBy.username": { $ne: userId }, // not already seen by this user
           },
           {
-            // OLD field — kept during migration
-            status: "seen",
- 
-            // NEW field — per-person seen timestamp
+             // per-person seen timestamp
             $addToSet: {
               seenBy: { username: userId, at: seenAt },
             },
