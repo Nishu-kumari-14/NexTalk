@@ -31,10 +31,11 @@ function HomePage() {
   
  
 
-  const selectUser = (username) => {
-    clearUnread(username); // clears from store
+ // now receives conversationId from ConversationList
+  const selectUser = (username, conversationId) => {
+    clearUnread(conversationId);
     navigate("/chat", {
-      state: { currentUser, selectedUser: username },
+      state: { currentUser, selectedUser: username, conversationId },
     });
   };
 
@@ -100,7 +101,6 @@ function HomePage() {
           <ContactList
             contacts={contacts}
             selectUser={selectUser}
-            onContactAdded={() => {}} // contact adding still handled in ContactList itself
             token={token}
           />
         )}

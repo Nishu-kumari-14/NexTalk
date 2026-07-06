@@ -22,19 +22,27 @@ function ConversationList({ conversations, loading, selectUser, unreadCounts = {
   return (
     <div className="list">
       {conversations.map((convo) => {
-        const unread = unreadCounts[convo.username] || 0;
+        // unreadCounts now keyed by conversationId
+        const convId = convo.conversationId?.toString();
+        const unread = unreadCounts[convId] || 0;
+ 
+        // convo.name is the display name:
+        // direct chat → other user's username
+        // group chat → group name
+        const displayName = convo.name;
+ 
         return (
           <div
-            key={convo.username}
+            key={convId}
             className="list-item"
-            onClick={() => selectUser(convo.username)}
+            onClick={() => selectUser(displayName, convo.conversationId)}
           >
             {/* AVATAR WITH DOT + UNREAD BADGE */}
             <div className="avatar-wrapper">
               <div className="avatar">
-                {convo.username.charAt(0).toUpperCase()}
+                {displayName?.charAt(0).toUpperCase()}
               </div>
-              {isOnline(convo.username) && (
+              {isOnline(displayName) && (
                 <span className="online-dot" />
               )}
               {unread > 0 && (
@@ -43,31 +51,31 @@ function ConversationList({ conversations, loading, selectUser, unreadCounts = {
                 </span>
               )}
             </div>
-
+ 
             {/* INFO */}
             <div className="item-info">
               <div className="item-top">
                 <span className={`item-name ${unread > 0 ? "item-name--unread" : ""}`}>
-                  {convo.username}
+                  {displayName}
                 </span>
                 <span className={`item-time ${unread > 0 ? "item-time--unread" : ""}`}>
                   {formatTime(convo.time)}
                 </span>
               </div>
               <div className="item-bottom">
-                {typingUsers[convo.username] ? (
+                {typingUsers[displayName] ? (
                   <span className="item-last typing-preview">typing...</span>
                 ) : (
                   <span className={`item-last ${unread > 0 ? "item-last--unread" : ""}`}>
                     {convo.lastMessage}
                   </span>
                 )}
-                <span className={`online-text ${isOnline(convo.username) ? "online" : "offline"}`}>
-                  {isOnline(convo.username) ? "Online" : "Offline"}
+                <span className={`online-text ${isOnline(displayName) ? "online" : "offline"}`}>
+                  {isOnline(displayName) ? "Online" : "Offline"}
                 </span>
               </div>
             </div>
-
+ 
           </div>
         );
       })}

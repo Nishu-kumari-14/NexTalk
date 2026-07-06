@@ -72,4 +72,7 @@ const ConversationSchema = new mongoose.Schema(
 // index for fast direct conversation lookup by sorted members pair
 ConversationSchema.index({ members: 1, type: 1 });
 
+// index for conversation list sorted by most recent activity
+ConversationSchema.index({ members: 1, lastMessageAt: -1 });
+
 module.exports = mongoose.model("Conversation", ConversationSchema);

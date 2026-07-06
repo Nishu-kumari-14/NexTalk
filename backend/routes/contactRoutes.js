@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const User = require("../models/User");
 const authMiddleware = require("../middleware/authMiddleware");
+const Conversation = require("../models/Conversation");
 
 // SEARCH USER
 router.get("/search", authMiddleware, async (req, res) => {
@@ -101,7 +102,7 @@ router.post("/accept/:username", authMiddleware, async (req, res) => {
       return res.status(400).json({ error: "No request from this user" });
     }
 
-    // add to contacts on both sides
+    // update contacts on both sides
     await User.updateOne(
       { username: currentUser },
       {
@@ -109,13 +110,39 @@ router.post("/accept/:username", authMiddleware, async (req, res) => {
         $pull: { pendingRequests: username }, // remove from pending
       }
     );
-
-    await User.updateOne(
+     await User.updateOne(
       { username },
       { $push: { contacts: currentUser } }
     );
 
-    res.json({ message: "Request accepted" });
+
+    // create Conversation document if not already exists
+    const members = [currentUser, username].sort();
+    let conversation = await Conversation.findOne({ type: "direct", members });
+
+    if (!conversation) {
+      conversation = await Conversation.create({
+        type: "direct",
+        members,
+        memberHistory: [
+          { username: currentUser, action: "joined", by: currentUser },
+          { username, action: "joined", by: currentUser },
+        ],
+      });
+    }
+
+    // return conversation so frontend can add it to store with correct shape
+    res.json({
+      message: "Request accepted",
+      conversation: {
+        conversationId: conversation._id,
+        type: conversation.type,
+        name: username,          // from currentUser's perspective
+        members: conversation.members,
+        lastMessage: "",
+        time: conversation.createdAt,
+      }
+    });
 
   } catch (err) {
     console.error(err);

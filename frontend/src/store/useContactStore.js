@@ -43,30 +43,22 @@ const useContactStore = create((set, get) => {
   // 2. Someone accepted MY contact request
   // contactStore updates contacts
   // tells messageStore to add a conversation
-  socket.on("request:accepted", ({ by  }) => {
-    set((state) => ({
-      contacts: [...(state.contacts || []), by ],
-    }));
+  socket.on("request:accepted", ({ by, conversation }) => {
+  set((state) => ({
+    contacts: [...(state.contacts || []), by],
+  }));
 
-    
-
-
-    // tell messageStore — new conversation starts
+  if (conversation) {
     useMessageStore.setState((state) => {
-       const exists = state.conversations.find((c) => c.username === by );
-       if (exists) return state; // already there — don't add duplicate
-      
-      
+      const exists = state.conversations.find(
+        (c) => c.conversationId?.toString() === conversation.conversationId?.toString()
+      );
+      if (exists) return state;
       return {
-      conversations: [
-        { username: by , lastMessage: "", time: new Date() },
-        ...state.conversations,
-      ],
-    };
-   });
-
-
-
+        conversations: [conversation, ...state.conversations],
+      };
+    });
+  }
 });
 
   // ── STORE ────────────────────────────────────────────────────────
@@ -80,42 +72,40 @@ const useContactStore = create((set, get) => {
 
     // Accept a contact request
     acceptRequest: async (username) => {
-      const token = localStorage.getItem("token");
-      try {
-        const response = await fetch(
-          `http://localhost:8080/contacts/accept/${username}`,
-          {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+  const token = localStorage.getItem("token");
+  try {
+    const response = await fetch(
+      `http://localhost:8080/contacts/accept/${username}`,
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } }
+    );
 
-        if (response.ok) {
-          // remove from pending, add to contacts
-          set((state) => ({
-            pending: state.pending.filter((u) => u !== username),
-            contacts: [...(state.contacts || []), username],
-          }));
+    if (response.ok) {
+      const data = await response.json();
 
-          // tell messageStore — new conversation starts
-          useMessageStore.setState((state) => {
-             const exists = state.conversations.find((c) => c.username === username);
-             if (exists) return state; // already there — don't add duplicate
-             return {
-               conversations: [
-                   { username, lastMessage: "", time: new Date() },
-                   ...state.conversations,
-               ],
-             };
-      });
+      set((state) => ({
+        pending: state.pending.filter((u) => u !== username),
+        contacts: [...(state.contacts || []), username],
+      }));
 
-          // notify the other user via socket
-          socket.emit("request:accept", { to: username });
-        }
-      } catch (err) {
-        console.error("Failed to accept request", err);
+      // add conversation with CORRECT new shape
+      if (data.conversation) {
+        useMessageStore.setState((state) => {
+          const exists = state.conversations.find(
+            (c) => c.conversationId?.toString() === data.conversation.conversationId?.toString()
+          );
+          if (exists) return state;
+          return {
+            conversations: [data.conversation, ...state.conversations],
+          };
+        });
       }
-    },
+
+      socket.emit("request:accept", { to: username });
+    }
+  } catch (err) {
+    console.error("Failed to accept request", err);
+  }
+},
 
     // Reject a contact request
     rejectRequest: async (username) => {

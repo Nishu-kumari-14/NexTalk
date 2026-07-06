@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import {useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom"; 
 import { useOnlineUsers } from "../context/OnlineUsersContext"; // 
 import MessageList from "../components/MessageList";
@@ -17,6 +17,7 @@ function ChatPage() {
   const location = useLocation();
   const currentUser = localStorage.getItem("username");
   const selectedUser = location?.state?.selectedUser;
+  const conversationId = location?.state?.conversationId; // ← new
   const navigate = useNavigate(); 
  
 const { typingUsers } = useTyping(); 
@@ -25,8 +26,8 @@ const isOnline = onlineUsers.includes(selectedUser); // ✅ always fresh
 const isPeerTyping = !!typingUsers[selectedUser];
   
 
-// read from store
-  const messages = useMessageStore((state) => state.messages[selectedUser] ?? null);
+// read from store — keyed by conversationId now
+  const messages = useMessageStore((state) => state.messages[conversationId] ?? null);
   const loadMessages = useMessageStore((state) => state.loadMessages);
   const clearActiveChat = useMessageStore((state) => state.clearActiveChat);
   const sendMessage = useMessageStore((state) => state.sendMessage);
@@ -34,54 +35,40 @@ const isPeerTyping = !!typingUsers[selectedUser];
   const clearUnread = useMessageStore((state) => state.clearUnread);
 
 
-//Fetch Old messages
-
 useEffect(() => {
-
-  if (!selectedUser) return;
-
-  clearUnread(selectedUser);
-
-  const fetchMessages = async () => {
-
-
-    try {
-       const token = localStorage.getItem("token");
+    if (!selectedUser || !conversationId) return;
  
-      const response = await fetch(
-   `http://localhost:8080/messages/${selectedUser}`,
-          {
-            headers: {
-                   Authorization: `Bearer ${token}`,
-               },
-        }
-   ); 
-
-      const dbMessages = await response.json();
-
-      // loadMessages merges DB data with any buffered messages + sets activeChat
-        loadMessages(selectedUser, dbMessages);
-
-      // mark all messages from this user as seen
-        markSeen(selectedUser);
-     
-     
-      
-    } catch (err) {
-
-      console.error("Failed to fetch messages", err);
-
-    }
-  };
-
-  fetchMessages();
-
-  // when leaving this chat — clear activeChat so incoming messages
-    // go to buffer instead of being appended to the visible list
+    // clear unread badge for this conversation
+    clearUnread(conversationId);
+ 
+    const fetchMessages = async () => {
+      try {
+        const token = localStorage.getItem("token");
+ 
+        // new route — GET /messages/:conversationId with pagination
+        const response = await fetch(
+          `http://localhost:8080/messages/${conversationId}?limit=50`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+ 
+        const data = await response.json();
+ 
+        // new response shape: { messages, hasMore, nextCursor }
+        loadMessages(conversationId, data.messages || []);
+ 
+        // mark all messages from selectedUser as seen
+        markSeen(selectedUser, conversationId);
+ 
+      } catch (err) {
+        console.error("Failed to fetch messages", err);
+      }
+    };
+ 
+    fetchMessages();
+ 
     return () => clearActiveChat();
-
-}, [selectedUser]);
-
+ 
+  }, [selectedUser, conversationId]);
 
 
 
@@ -135,7 +122,7 @@ useEffect(() => {
 
       <MessageList messages={messages || []} currentUser={currentUser} />
       <MessageInput
-        sendMessage={(text) => sendMessage(text, selectedUser)}
+        sendMessage={(text) => sendMessage(text, selectedUser, conversationId)}
         receiver={selectedUser}
       />
 

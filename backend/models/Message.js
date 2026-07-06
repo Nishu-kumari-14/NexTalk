@@ -98,6 +98,9 @@ const msgSchema = new mongoose.Schema(
 // index for fast conversation history fetch
 msgSchema.index({ conversationId: 1, sentAt: 1 });
 
+// index for unread count aggregate query
+msgSchema.index({ sender: 1, "seenBy.username": 1 });
+
 // old index kept during migration — still needed by old code paths
 msgSchema.index({ sender: 1, receiver: 1, sentAt: 1 });
 
