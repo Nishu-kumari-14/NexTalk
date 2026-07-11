@@ -1,7 +1,7 @@
 import { useState,useRef} from "react";
 import socket from "../socket";
 
-function MessageInput({ sendMessage,receiver }) {
+function MessageInput({ sendMessage,conversationId}) {
   const [text, setText] = useState("");
   const typingTimeoutRef = useRef(null);
   const isTypingRef = useRef(false);
@@ -13,14 +13,14 @@ function MessageInput({ sendMessage,receiver }) {
     // emit typing:start only once per burst
     if (!isTypingRef.current) {
       isTypingRef.current = true;
-      socket.emit("typing:start", { to: receiver });
+      socket.emit("typing:start", { conversationId });
     }
  
     // reset the stop timer on every keystroke
     clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
       isTypingRef.current = false;
-      socket.emit("typing:stop", { to: receiver });
+      socket.emit("typing:stop", { conversationId });
     }, 1500);
   };
 
@@ -31,7 +31,7 @@ function MessageInput({ sendMessage,receiver }) {
     clearTimeout(typingTimeoutRef.current);
     if (isTypingRef.current) {
       isTypingRef.current = false;
-      socket.emit("typing:stop", { to: receiver });
+      socket.emit("typing:stop", { conversationId });
     }
  
 

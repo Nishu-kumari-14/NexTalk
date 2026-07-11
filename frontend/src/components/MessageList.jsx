@@ -1,7 +1,7 @@
 import Message from "./Message";
 import { useEffect, useRef } from "react";
 
-function MessageList({ messages, currentUser }) {
+function MessageList({ messages, currentUser, isGroup }) {
 
   const bottomRef = useRef(null);
 
@@ -21,6 +21,7 @@ function MessageList({ messages, currentUser }) {
           currentUser={currentUser}
           status={msg.status}   // ✅ pass status
           timestamp={msg.sentAt}
+          isGroup={isGroup}
         />
       ))}
 

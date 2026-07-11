@@ -66,10 +66,23 @@
   border-radius: 12px;
   color: white;
   display: flex;
-  align-items: flex-end;
-  gap: 6px;
+  flex-direction: column;
   font-size: 14px;
   line-height: 1.4;
+}
+
+.msg-bubble-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.msg-sender-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #d4a373;
+  margin-bottom: 2px;
 }
 
 .my-message {
@@ -241,4 +254,5 @@
   white-space: nowrap;
   line-height: 1;
 }
+
 

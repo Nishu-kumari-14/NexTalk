@@ -48,18 +48,16 @@ const useContactStore = create((set, get) => {
     contacts: [...(state.contacts || []), by],
   }));
 
-  if (conversation) {
-    useMessageStore.setState((state) => {
-      const exists = state.conversations.find(
-        (c) => c.conversationId?.toString() === conversation.conversationId?.toString()
-      );
-      if (exists) return state;
-      return {
-        conversations: [conversation, ...state.conversations],
-      };
-    });
-  }
+ useMessageStore.getState().addConversationIfMissing(conversation);
 });
+
+ // 3. Someone added me to a group — conversation already exists in DB,
+  // this just pushes it into the store instantly for online members
+  // (offline members get it naturally via the join-all-conversations-on-connect
+  // logic in handlers.js, no listener needed for that case)
+  socket.on("group:created", ({ conversation }) => {
+    useMessageStore.getState().addConversationIfMissing(conversation);
+  });
 
   // ── STORE ────────────────────────────────────────────────────────
   return {
@@ -88,17 +86,7 @@ const useContactStore = create((set, get) => {
       }));
 
       // add conversation with CORRECT new shape
-      if (data.conversation) {
-        useMessageStore.setState((state) => {
-          const exists = state.conversations.find(
-            (c) => c.conversationId?.toString() === data.conversation.conversationId?.toString()
-          );
-          if (exists) return state;
-          return {
-            conversations: [data.conversation, ...state.conversations],
-          };
-        });
-      }
+      useMessageStore.getState().addConversationIfMissing(data.conversation);
 
       socket.emit("request:accept", { to: username });
     }
@@ -156,6 +144,37 @@ sendRequest: async (username) => {
     return { success: false, error: "Failed to send request" };
   }
 },
+
+   // Create a group — REST creates the Conversation + notifies invited
+    // members over socket (see groupRoutes.js); this just adds it to
+    // the CREATOR's own store from the REST response
+    createGroup: async (name, members) => {
+      const token = localStorage.getItem("token");
+      try {
+        const response = await fetch("http://localhost:8080/groups/create", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ name, members }),
+        });
+ 
+        const data = await response.json();
+ 
+        if (!response.ok) {
+          return { success: false, error: data.error };
+        }
+ 
+        useMessageStore.getState().addConversationIfMissing(data.conversation);
+ 
+        return { success: true, conversation: data.conversation };
+      } catch (err) {
+        console.error("Failed to create group", err);
+        return { success: false, error: "Failed to create group" };
+      }
+    },
+
 
     // Called on logout — wipes clean
     reset: () => set({ contacts: [], pending: [] }),

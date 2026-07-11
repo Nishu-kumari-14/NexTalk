@@ -47,6 +47,11 @@ module.exports = function setupSocketHandlers(io) {
     // Save socket for presence
     users[userId] = socket;
 
+    // personal room — lets any part of the app (including REST routes,
+    // via io.to(username) / io.in(username).socketsJoin(...)) reach this
+    // user's socket(s) without needing access to the users{} map
+    socket.join(userId);
+
 
     // ✅ tell everyone this user is online
     socket.broadcast.emit("user:online", { username: userId });
@@ -102,53 +107,51 @@ module.exports = function setupSocketHandlers(io) {
       }
     });
 
-    // ── Send message — DUAL-WRITE ─
+   // ── Send message ──────────────────────────────────────────────────────
+    // routes by conversationId — works identically for direct and group,
+    // since both are already created before anyone can send into them
+    // (direct: at contact-accept, group: at group-creation)
     socket.on(
       "message:send",
-      async ({ receiver, message: msgText,sentAt }) => {
+      async ({  conversationId, message: msgText,sentAt }) => {
 
-        console.log(`${userId} → ${receiver}: ${msgText}`);
+        console.log(`${userId} → conversation ${conversationId}: ${msgText}`);
         
 
         try {
 
-          // DUAL-WRITE STEP 1 — find or create Conversation
-          const conversation = await findOrCreateDirectConversation(userId, receiver);
+          
+          const conversation = await Conversation.findById(conversationId);
+          if (!conversation) {
+            console.error("message:send — conversation not found:", conversationId);
+            return;
+          }
+
+          // security check — only members can send into this conversation
+          if (!conversation.members.includes(userId)) {
+            console.error(`message:send — ${userId} is not a member of ${conversationId}`);
+            return;
+          }
            
            const roomId = conversation._id.toString();
 
-           // STEP 2 — join room if newly created
-        // both sender and receiver need to be in the room
-        socket.join(roomId);
-        if (users[receiver]) {
-          users[receiver].join(roomId);
-        }
-          // DUAL-WRITE STEP 3 — save Message with BOTH old and new fields
+          // safety net — ensures the sender's current socket is in the
+          // room even if it somehow missed the on-connect join
 
+        socket.join(roomId);
           
           const newMsg = await Message.create({
-
-             
-
             sender: userId,
-
-            // conversationId is now the source of truth for routing —
-            // receiver stays a function param (used above to find/create
-            // the conversation and join rooms) but is no longer stored
-  
             conversationId: conversation._id,
             deliveredTo: [],
             seenBy: [],
-
-            // unchanged fields
             message: msgText,
-            
             sentAt: sentAt || new Date(), // fallback to server time if missing
           });
 
           console.log("Saved:", newMsg);
 
-          // DUAL-WRITE STEP 4 — update Conversation's last message
+         
           await Conversation.findByIdAndUpdate(conversation._id, {
             lastMessage: msgText,
             lastMessageSender: userId,
@@ -156,11 +159,8 @@ module.exports = function setupSocketHandlers(io) {
           });
  
           console.log("Saved:", newMsg._id, "conversationId:", newMsg.conversationId);
-
-          // STEP 5 — broadcast to room (replaces manual users[receiver].emit)
-        // io.to(roomId) delivers to ALL members of the room except sender
-        // for direct chat: just the receiver
-        // for group chat (future): all members automatically
+          // broadcast to room — reaches all OTHER members
+          // direct: just the other person, group: everyone else
         socket.to(roomId).emit("message:receive", {
           id: newMsg._id,
           from: userId,
@@ -186,20 +186,28 @@ module.exports = function setupSocketHandlers(io) {
       });
 
 // ── SEEN HANDLER ──────────────────────────────────────────────────────────
-    // from = username of the person whose messages we are marking as seen
-    socket.on("message:seen", async ({ from, conversationId }) => {
+   // finds exactly which messages this user hasn't seen yet in this
+// conversation, marks them, and tells each affected sender precisely
+// WHICH of their messages were just seen ...
+    socket.on("message:seen", async ({ conversationId }) => {
       try {
         const seenAt = new Date();
+
+        const toMarkSeen = await Message.find({
+          conversationId,
+          sender: { $ne: userId },
+          "seenBy.username": { $ne: userId },
+        }).select("_id sender").lean();
  
-        // update by conversationId + sender — handles both direct and group
+        if (toMarkSeen.length > 0) {
+          const idsToUpdate = toMarkSeen.map((m) => m._id);
+ 
+ 
+       
         await Message.updateMany(
+           { _id: { $in: idsToUpdate } },
           {
-            conversationId,
-            sender: from,
-            "seenBy.username": { $ne: userId }, // not already seen by this user
-          },
-          {
-             // per-person seen timestamp
+      
             $addToSet: {
               seenBy: { username: userId, at: seenAt },
             },
@@ -207,35 +215,46 @@ module.exports = function setupSocketHandlers(io) {
         );
         
 
-        // notify sender if online
-        if (users[from]) {
-          users[from].emit("message:seen", {
-            by: userId,   // who saw it
-            from,         // the sender
-            conversationId,
+        // group affected message ids by sender — a group chat can have
+          // messages from several different senders in one batch
+          const bySender = {};
+          toMarkSeen.forEach((m) => {
+            const s = m.sender;
+            if (!bySender[s]) bySender[s] = [];
+            bySender[s].push(m._id.toString());
           });
+ 
+          Object.entries(bySender).forEach(([senderUsername, messageIds]) => {
+            if (users[senderUsername]) {
+              users[senderUsername].emit("message:seen", {
+                by: userId,
+                conversationId,
+                messageIds,
+              });
+            }
+          });
+ 
+          console.log(`${userId} saw ${idsToUpdate.length} message(s) in ${conversationId}`);
         }
-
-        console.log(`${userId} saw messages from ${from} in ${conversationId}`);
 
       } catch (err) {
         console.error("SEEN ERROR:", err);
       }
     });
 
-    // ── TYPING INDICATORS ─────────────────────────────────────────────────────
-    // still use users{} — typing is per-user not per-room
-    socket.on("typing:start", ({ to }) => {
-      if (users[to]) {
-        users[to].emit("typing:start", { from: userId });
-      }
+   // ── TYPING INDICATORS ─────────────────────────────────────────────────────
+    // broadcast to the conversation's room — works for direct (reaches the
+    // 1 other person) and group (reaches all other members) the same way
+     socket.on("typing:start", ({ conversationId }) => {
+      if (!conversationId) return;
+      socket.to(conversationId).emit("typing:start", { from: userId, conversationId });
     });
-
-    socket.on("typing:stop", ({ to }) => {
-      if (users[to]) {
-        users[to].emit("typing:stop", { from: userId });
-      }
+ 
+    socket.on("typing:stop", ({ conversationId }) => {
+      if (!conversationId) return;
+      socket.to(conversationId).emit("typing:stop", { from: userId, conversationId });
     });
+ 
 
 
     // ── CONTACT REQUESTS 

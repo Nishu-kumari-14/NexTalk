@@ -1,7 +1,12 @@
-function Message({ message, sender, currentUser,status ,timestamp }) {
+function Message({ message, sender, currentUser,status ,timestamp, isGroup }) {
 
   // only show ticks on your own messages
   const showTicks = sender === currentUser;
+
+  // show sender name on incoming group messages only —
+  // direct chats don't need it (always "them"), and you never need
+  // to see your own name on your own bubble
+  const showSenderName = isGroup && !showTicks;
 
   const renderTicks = () => {
     if (!showTicks) return null;
@@ -23,13 +28,16 @@ function Message({ message, sender, currentUser,status ,timestamp }) {
     });
   };
 
- return (
+  return (
     <div className={`message ${sender === currentUser ? "my-message" : "other-message"}`}>
-      <span className="msg-text">{message}</span>
-      <span className="msg-meta">
-        <span className="msg-time">{formatTime(timestamp)}</span>
-        {renderTicks()}
-      </span>
+      {showSenderName && <span className="msg-sender-name">{sender}</span>}
+      <div className="msg-bubble-row">
+        <span className="msg-text">{message}</span>
+        <span className="msg-meta">
+          <span className="msg-time">{formatTime(timestamp)}</span>
+          {renderTicks()}
+        </span>
+      </div>
     </div>
   );
 }

@@ -1,9 +1,9 @@
 import { useOnlineUsers } from "../context/OnlineUsersContext";
 import { useTyping } from "../context/TypingContext";
 
-function ConversationList({ conversations, loading, selectUser, unreadCounts = {} }) {
+function ConversationList({ conversations, loading, selectUser, unreadCounts = {}, currentUser}) {
   const { onlineUsers } = useOnlineUsers();
-  const { typingUsers } = useTyping();
+ const { isTypingInConversation } = useTyping();
 
   const formatTime = (time) => {
     if (!time) return "";
@@ -30,19 +30,27 @@ function ConversationList({ conversations, loading, selectUser, unreadCounts = {
         // direct chat → other user's username
         // group chat → group name
         const displayName = convo.name;
+
+        const isTyping = isTypingInConversation(convo.conversationId, currentUser);
+        const isGroupConvo = convo.type === "group";
+        const statusText = isGroupConvo
+          ? `${convo.members?.length || 0} members`
+          : isOnline(displayName)
+          ? "Online"
+          : "Offline";
  
         return (
           <div
             key={convId}
             className="list-item"
-            onClick={() => selectUser(displayName, convo.conversationId)}
+            onClick={() => selectUser(displayName, convo.conversationId, convo.type)}
           >
             {/* AVATAR WITH DOT + UNREAD BADGE */}
             <div className="avatar-wrapper">
               <div className="avatar">
                 {displayName?.charAt(0).toUpperCase()}
               </div>
-              {isOnline(displayName) && (
+               {!isGroupConvo && isOnline(displayName) && (
                 <span className="online-dot" />
               )}
               {unread > 0 && (
@@ -63,15 +71,15 @@ function ConversationList({ conversations, loading, selectUser, unreadCounts = {
                 </span>
               </div>
               <div className="item-bottom">
-                {typingUsers[displayName] ? (
+                {isTyping ? (
                   <span className="item-last typing-preview">typing...</span>
                 ) : (
                   <span className={`item-last ${unread > 0 ? "item-last--unread" : ""}`}>
                     {convo.lastMessage}
                   </span>
                 )}
-                <span className={`online-text ${isOnline(displayName) ? "online" : "offline"}`}>
-                  {isOnline(displayName) ? "Online" : "Offline"}
+                <span className={`online-text ${!isGroupConvo && isOnline(displayName) ? "online" : "offline"}`}>
+                  {statusText}
                 </span>
               </div>
             </div>

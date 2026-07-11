@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import ConversationList from "../components/ConversationList";
 import ContactList from "../components/ContactList";
 import RequestList from "../components/RequestList";
+import CreateGroupModal from "../components/CreateGroupModal";
 import socket from "../socket";
 import useMessageStore from "../store/useMessageStore";
 import useContactStore from "../store/useContactStore";
@@ -10,6 +11,7 @@ import "./HomePage.css";
 
 function HomePage() {
   const [activeTab, setActiveTab] = useState("chats");// pure UI state — correct to keep local
+  const [showGroupModal, setShowGroupModal] = useState(false); // pure UI state
   const navigate = useNavigate();
   const currentUser = localStorage.getItem("username");
   const token = localStorage.getItem("token");
@@ -32,10 +34,10 @@ function HomePage() {
  
 
  // now receives conversationId from ConversationList
-  const selectUser = (username, conversationId) => {
+  const selectUser = (username, conversationId, type) => {
     clearUnread(conversationId);
     navigate("/chat", {
-      state: { currentUser, selectedUser: username, conversationId },
+      state: { currentUser, selectedUser: username, conversationId, type },
     });
   };
 
@@ -90,12 +92,22 @@ function HomePage() {
 
         {/* CONTENT */}
         {activeTab === "chats" && (
-          <ConversationList
-            conversations={conversations}
-            loading={loading}
-            selectUser={selectUser}
-            unreadCounts={unreadCounts}
-          />
+          <>
+    <button
+      className="new-group-btn"
+      onClick={() => setShowGroupModal(true)}
+    >
+      + New Group
+    </button>
+
+    <ConversationList
+      conversations={conversations}
+      loading={loading}
+      selectUser={selectUser}
+      unreadCounts={unreadCounts}
+      currentUser={currentUser}
+    />
+  </>
         )}
         {activeTab === "contacts" && (
           <ContactList
@@ -113,7 +125,16 @@ function HomePage() {
         )}
 
       </div>
+
+      {showGroupModal && (
+        <CreateGroupModal
+          contacts={contacts}
+          onClose={() => setShowGroupModal(false)}
+          onCreated={() => setActiveTab("chats")}
+        />
+      )}
     </div>
+      
   );
 }
 

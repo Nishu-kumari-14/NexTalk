@@ -8,15 +8,22 @@ export function TypingProvider({ children }) {
   const [typingUsers, setTypingUsers] = useState({});
 
   useEffect(() => {
-    socket.on("typing:start", ({ from }) => {
-      setTypingUsers((prev) => ({ ...prev, [from]: true }));
+    socket.on("typing:start", ({ from, conversationId }) => {
+      const convId = conversationId?.toString();
+      if (!convId) return;
+      setTypingUsers((prev) => ({
+        ...prev,
+        [convId]: { ...(prev[convId] || {}), [from]: true },
+      }));
     });
 
-    socket.on("typing:stop", ({ from }) => {
+     socket.on("typing:stop", ({ from, conversationId }) => {
+      const convId = conversationId?.toString();
+      if (!convId) return;
       setTypingUsers((prev) => {
-        const next = { ...prev };
-        delete next[from];
-        return next;
+        const convTyping = { ...(prev[convId] || {}) };
+        delete convTyping[from];
+        return { ...prev, [convId]: convTyping };
       });
     });
 
@@ -26,8 +33,28 @@ export function TypingProvider({ children }) {
     };
   }, []);
 
+  // is anyone (other than excludeUser) currently typing in this conversation?
+  const isTypingInConversation = (conversationId, excludeUser) => {
+    const convId = conversationId?.toString();
+    const convTyping = typingUsers[convId];
+    if (!convTyping) return false;
+    return Object.keys(convTyping).some(
+      (u) => u !== excludeUser && convTyping[u]
+    );
+  };
+ 
+  // usernames currently typing in this conversation (excluding excludeUser)
+  const getTypingUsernames = (conversationId, excludeUser) => {
+    const convId = conversationId?.toString();
+    const convTyping = typingUsers[convId];
+    if (!convTyping) return [];
+    return Object.keys(convTyping).filter(
+      (u) => u !== excludeUser && convTyping[u]
+    );
+  };
+
   return (
-    <TypingContext.Provider value={{ typingUsers }}>
+    <TypingContext.Provider value={{ typingUsers, isTypingInConversation, getTypingUsernames }}>
       {children}
     </TypingContext.Provider>
   );

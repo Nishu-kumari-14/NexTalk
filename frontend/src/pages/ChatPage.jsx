@@ -17,14 +17,33 @@ function ChatPage() {
   const location = useLocation();
   const currentUser = localStorage.getItem("username");
   const selectedUser = location?.state?.selectedUser;
-  const conversationId = location?.state?.conversationId; // ← new
+  const conversationId = location?.state?.conversationId; 
+  const conversationType = location?.state?.type; // "direct" | "group"
+  const isGroup = conversationType === "group";
   const navigate = useNavigate(); 
  
-const { typingUsers } = useTyping(); 
-const { onlineUsers } = useOnlineUsers(); // ✅ read from context
-const isOnline = onlineUsers.includes(selectedUser); // ✅ always fresh
-const isPeerTyping = !!typingUsers[selectedUser];
-  
+const { isTypingInConversation } = useTyping();
+const { onlineUsers } = useOnlineUsers(); 
+const isOnline = onlineUsers.includes(selectedUser); 
+const isPeerTyping = isTypingInConversation(conversationId, currentUser);
+
+// group conversations don't have a single "online" concept — show
+// member count instead of a misleading Online/Offline label
+const conversations = useMessageStore((state) => state.conversations);
+const currentConversation = conversations.find(
+  (c) => c.conversationId?.toString() === conversationId?.toString()
+);
+const memberCount = currentConversation?.members?.length;
+ 
+const headerStatusText = isGroup
+  ? isPeerTyping
+    ? "typing..."
+    : `${memberCount || 0} members`
+  : isPeerTyping
+  ? "typing..."
+  : isOnline
+  ? "Online"
+  : "Offline";
 
 // read from store — keyed by conversationId now
   const messages = useMessageStore((state) => state.messages[conversationId] ?? null);
@@ -56,8 +75,8 @@ useEffect(() => {
         // new response shape: { messages, hasMore, nextCursor }
         loadMessages(conversationId, data.messages || []);
  
-        // mark all messages from selectedUser as seen
-        markSeen(selectedUser, conversationId);
+        // mark all unseen messages in this conversation as seen
+        markSeen(conversationId);
  
       } catch (err) {
         console.error("Failed to fetch messages", err);
@@ -108,7 +127,7 @@ useEffect(() => {
     <div className="chat-header-text">
   <h2>{selectedUser ?? ""}</h2>
   <span className={`online-text ${isPeerTyping ? "online" : isOnline ? "online" : "offline"}`}>
-    {isPeerTyping ? "typing..." : isOnline ? "Online" : "Offline"}
+    {headerStatusText}
   </span>
 </div>
   </div>
@@ -120,10 +139,10 @@ useEffect(() => {
      
       
 
-      <MessageList messages={messages || []} currentUser={currentUser} />
+      <MessageList messages={messages || []} currentUser={currentUser} isGroup={isGroup} />
       <MessageInput
         sendMessage={(text) => sendMessage(text, selectedUser, conversationId)}
-        receiver={selectedUser}
+        conversationId={conversationId}
       />
 
     </div>

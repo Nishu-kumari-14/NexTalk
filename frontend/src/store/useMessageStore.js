@@ -2,6 +2,28 @@ import { create } from "zustand";
 import socket from "../socket";
 import useToastStore from "./useToastStore";
 
+
+// Derives display status ("sent" | "delivered" | "seen") from a message's
+// deliveredTo/seenBy arrays, compared against how many people actually
+// need to have received/seen it — 1 for direct chats, ALL other group
+// members for groups. Matches WhatsApp: single tick until it reaches
+// EVERY recipient's device, double grey once everyone has it, double
+// blue only once everyone has actually seen it.
+function computeStatus(msg, conversations) {
+  const seenCount = msg.seenBy?.length || 0;
+  const deliveredCount = msg.deliveredTo?.length || 0;
+ 
+  const conv = conversations.find(
+    (c) => c.conversationId?.toString() === msg.conversationId?.toString()
+  );
+  const totalMembers = conv?.members?.length || 2; // fallback assumes direct (2 people)
+  const expectedRecipients = Math.max(totalMembers - 1, 1);
+ 
+  if (seenCount >= expectedRecipients) return "seen";
+  if (deliveredCount >= expectedRecipients) return "delivered";
+  return "sent";
+}
+
 const useMessageStore = create((set, get) => {
 
   // ── SOCKET LISTENERS ─────────────────────────────────────────────
@@ -44,13 +66,6 @@ const useMessageStore = create((set, get) => {
   socket.on("message:receive", (msg) => {
 
     const { conversations, unreadCounts, messages, activeChat } = get();
-
-
-  
-  
-
-
-    
 
     // always ack delivery — message reached this device
     socket.emit("message:ack", { id: msg.id });
@@ -110,8 +125,8 @@ const useMessageStore = create((set, get) => {
 
     // if this conversation is open — mark as seen immediately
     if (activeChat === convId) {
-      socket.emit("message:seen", { from: msg.from, conversationId: convId });
-    }
+  socket.emit("message:seen", { conversationId: convId });
+}
 
 
 
@@ -154,39 +169,56 @@ const useMessageStore = create((set, get) => {
   });
 
  // 3. Receiver acked — update sender's message to delivered
-  socket.on("message:delivered", ({ id }) => {
-    const { messages } = get();
+  socket.on("message:delivered", ({ id, by }) => {
+    const { messages, conversations } = get();
     const updatedMessages = {};
     for (const convId in messages) {
-      updatedMessages[convId] = messages[convId].map((m) =>
-        m._id?.toString() === id?.toString()
-          ? { ...m, status: "delivered" }
-          : m
-      );
+      updatedMessages[convId] = messages[convId].map((m) => {
+        if (m._id?.toString() !== id?.toString()) return m;
+ 
+        const alreadyHas = (m.deliveredTo || []).includes(by);
+        const deliveredTo = alreadyHas
+          ? m.deliveredTo
+          : [...(m.deliveredTo || []), by];
+ 
+        const updated = { ...m, deliveredTo };
+        return { ...updated, status: computeStatus(updated, conversations) };
+      });
     }
     set({ messages: updatedMessages });
   });
 
-  // 4. Receiver opened chat — update all messages to seen
-  // now includes conversationId from server
-  socket.on("message:seen", ({ by, conversationId }) => {
-    const { messages } = get();
-    const currentUser = localStorage.getItem("username");
+  // 4. Sender is told exactly which of their message IDs were just seen,
+  // and by whom. Only those specific messages get their seenBy array
+  // updated — NOT every message the sender has ever sent in this
+  // conversation. Status is then recomputed per-message: for direct
+  // chats 1 seenBy entry = seen, for groups it needs ALL other members.
+   socket.on("message:seen", ({ by, conversationId, messageIds }) => {
+    if (!messageIds || messageIds.length === 0) return;
+ 
+    const { messages, conversations } = get();
     const convId = conversationId?.toString();
     const conv = messages[convId] || [];
+    const idSet = new Set(messageIds);
+ 
+    const updatedConv = conv.map((m) => {
+      if (!m._id || !idSet.has(m._id.toString())) return m;
+ 
+      const alreadyHas = (m.seenBy || []).some(
+        (s) => (s.username || s) === by
+      );
+      const seenBy = alreadyHas
+        ? m.seenBy
+        : [...(m.seenBy || []), { username: by, at: new Date() }];
+ 
+      const updated = { ...m, seenBy };
+      return { ...updated, status: computeStatus(updated, conversations) };
+    });
  
     set({
-      messages: {
-        ...messages,
-        [convId]: conv.map((m) =>
-          m.sender === currentUser
-            ? { ...m, status: "seen" }
-            : m
-        ),
-      },
+      messages: { ...messages, [convId]: updatedConv },
     });
   });
-
   // ── STORE ────────────────────────────────────────────────────────
   return {
 
@@ -200,30 +232,46 @@ const useMessageStore = create((set, get) => {
 
     // ── ACTIONS ──────────────────────────────────────────────────
 
+    // Shared helper — adds a conversation to the list if not already
+    // present, deduplicated by conversationId. Used by useContactStore
+    // for three cases that all need the same dedupe-and-prepend logic:
+    // accepting a contact request (REST response), being notified that
+    // someone accepted YOUR request (request:accepted socket event),
+    // and being added to a group (group:created socket event).
+    addConversationIfMissing: (conversation) => {
+      if (!conversation) return;
+      set((state) => {
+        const exists = state.conversations.find(
+          (c) =>
+            c.conversationId?.toString() ===
+            conversation.conversationId?.toString()
+        );
+        if (exists) return state;
+        return { conversations: [conversation, ...state.conversations] };
+      });
+    },
+
     
 
      // Called when ChatPage mounts — merges DB messages with buffer
      loadMessages: (conversationId, dbMessages) => {
-      const { messages } = get();
+      const { messages, conversations } = get();
       const convId = conversationId?.toString();
       const buffered = messages[convId] || [];
 
 
 
-      // DB messages no longer carry a "status" field (removed in cleanup —
-      // see migration log Step 6). Derive it from deliveredTo/seenBy so
-      // ticks stay accurate for messages loaded on chat open.
-      // Buffered/live messages already have status set via socket events,
-      // so they pass through unchanged.
+      // DB messages already carry real deliveredTo/seenBy arrays (see
+      // migration log Step 6 — the old flat "status" field was removed
+      // from the schema). Status is derived from those arrays using the
+      // same computeStatus helper the live socket listeners use, so
+      // historical and live messages are always evaluated identically —
+      // including the "seen by ALL members" rule for groups.
+      // Buffered/live messages already have status set via socket
+      // events, so they pass through unchanged.
       const dbMessagesWithStatus = dbMessages.map((m) => {
         if (m.status) return m;
-        let status = "sent";
-        if (m.seenBy?.length > 0) {
-          status = "seen";
-        } else if (m.deliveredTo?.length > 0) {
-          status = "delivered";
-        }
-        return { ...m, status };
+        return { ...m, status: computeStatus(m, conversations) };
       });
  
 
@@ -267,6 +315,8 @@ const useMessageStore = create((set, get) => {
         message: text,
         sender: currentUser,
         status: "sent",
+        deliveredTo: [],
+        seenBy: [],
         sentAt,
         conversationId,
       };
@@ -288,11 +338,13 @@ const useMessageStore = create((set, get) => {
        socket.emit("message:send", { message: text, receiver, conversationId, sentAt });
     },
 
-    // Called when ChatPage opens — marks messages as seen
-    // now sends conversationId to backend
-    markSeen: (from, conversationId) => {
-      socket.emit("message:seen", { from, conversationId });
+   // Called when ChatPage opens — marks messages as seen
+    // conversationId is all the backend needs now — it figures out
+    // exactly which messages/senders are affected server-side
+    markSeen: (conversationId) => {
+      socket.emit("message:seen", { conversationId });
     },
+ 
  
     // Called when user opens a chat — clears unread badge
     clearUnread: (conversationId) =>

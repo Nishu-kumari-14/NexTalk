@@ -8,6 +8,7 @@ const messageRoutes = require("./routes/messageRoutes.js");
 const contactRoutes = require("./routes/contactRoutes");
 const authRoutes = require("./routes/authRoutes.js");
 const socketAuth = require("./middleware/socketAuth");
+const groupRoutes = require("./routes/groupRoutes.js");
 
 
 
@@ -33,9 +34,15 @@ const io = new Server(server, {
   },
 });
 
+
+// expose io to REST routes (e.g. groupRoutes.js) so they can notify/join
+// sockets without needing direct access to handlers.js's internal state
+app.set("io", io);
+
 app.use("/auth", authRoutes);
 app.use("/contacts", contactRoutes);
 app.use("/messages", messageRoutes);
+app.use("/groups", groupRoutes);
 
 
 

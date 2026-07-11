@@ -448,3 +448,14 @@
   color: #4caf50;
   font-weight: 600;
 }
+
+.new-group-btn {
+  margin: 8px 12px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+}
