@@ -6,7 +6,7 @@ backend/node_modules
 frontend/dist
 frontend/.vite
 
-# environment variables — NEVER commit these
+# environment variables 
 .env
 frontend/.env
 backend/.env

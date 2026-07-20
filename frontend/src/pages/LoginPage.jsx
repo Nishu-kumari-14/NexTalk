@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import socket from "../socket";
-import "../App.css"; // ✅ import your css file
+import "../App.css"; // 
+import {API_URL} from "../config"
+
 
 function LoginPage() {
   const [username, setUsername] = useState("");
@@ -16,7 +18,7 @@ function LoginPage() {
     }
 
     try {
-      const response = await fetch("http://localhost:8080/auth/login", {
+      const response = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

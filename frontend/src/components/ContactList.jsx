@@ -2,6 +2,7 @@ import { useState } from "react";
 import socket from "../socket";
 import { useOnlineUsers } from "../context/OnlineUsersContext"; // ✅
 import useContactStore from "../store/useContactStore";
+import {API_URL} from "../config"
 
 function ContactList({ contacts, selectUser, token}) {
   const { onlineUsers } = useOnlineUsers(); // ✅ read here directly
@@ -20,7 +21,7 @@ function ContactList({ contacts, selectUser, token}) {
 
     try {
       const response = await fetch(
-        `http://localhost:8080/contacts/search?username=${searchText}`,
+        `${API_URL}/contacts/search?username=${searchText}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const data = await response.json();

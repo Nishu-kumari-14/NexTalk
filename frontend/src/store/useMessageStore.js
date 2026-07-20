@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import socket from "../socket";
 import useToastStore from "./useToastStore";
+import { API_URL } from "../config";
 
 
 // Derives display status ("sent" | "delivered" | "seen") from a message's
@@ -39,13 +40,13 @@ const useMessageStore = create((set, get) => {
  
     try {
       // fetch conversations
-      const convRes = await fetch("http://localhost:8080/messages/conversations", {
+      const convRes = await fetch(`${API_URL}/messages/conversations`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const convData = await convRes.json();
  
       // fetch unread counts
-      const unreadRes = await fetch("http://localhost:8080/messages/unread", {
+      const unreadRes = await fetch(`${API_URL}/messages/unread`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const unreadData = await unreadRes.json();

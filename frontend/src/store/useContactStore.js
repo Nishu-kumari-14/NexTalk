@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import socket from "../socket";
 import useMessageStore from "./useMessageStore";
+import { API_URL } from "../config";
+
 
 const useContactStore = create((set, get) => {
 
@@ -13,13 +15,13 @@ const useContactStore = create((set, get) => {
 
     try {
       // fetch contacts
-      const contactsRes = await fetch("http://localhost:8080/contacts", {
+      const contactsRes = await fetch(`${API_URL}/contacts`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const contactsData = await contactsRes.json();
 
       // fetch pending requests
-      const pendingRes = await fetch("http://localhost:8080/contacts/pending", {
+      const pendingRes = await fetch(`${API_URL}/contacts/pending`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const pendingData = await pendingRes.json();
@@ -73,7 +75,7 @@ const useContactStore = create((set, get) => {
   const token = localStorage.getItem("token");
   try {
     const response = await fetch(
-      `http://localhost:8080/contacts/accept/${username}`,
+      `${API_URL}/contacts/accept/${username}`,
       { method: "POST", headers: { Authorization: `Bearer ${token}` } }
     );
 
@@ -100,7 +102,7 @@ const useContactStore = create((set, get) => {
       const token = localStorage.getItem("token");
       try {
         const response = await fetch(
-          `http://localhost:8080/contacts/reject/${username}`,
+          `${API_URL}/contacts/reject/${username}`,
           {
             method: "DELETE",
             headers: { Authorization: `Bearer ${token}` },
@@ -123,7 +125,7 @@ sendRequest: async (username) => {
   const token = localStorage.getItem("token");
   try {
     const response = await fetch(
-      `http://localhost:8080/contacts/request/${username}`,
+      `${API_URL}/contacts/request/${username}`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -151,7 +153,7 @@ sendRequest: async (username) => {
     createGroup: async (name, members) => {
       const token = localStorage.getItem("token");
       try {
-        const response = await fetch("http://localhost:8080/groups/create", {
+        const response = await fetch(`${API_URL}/groups/create`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

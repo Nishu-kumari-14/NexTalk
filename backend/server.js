@@ -9,6 +9,7 @@ const contactRoutes = require("./routes/contactRoutes");
 const authRoutes = require("./routes/authRoutes.js");
 const socketAuth = require("./middleware/socketAuth");
 const groupRoutes = require("./routes/groupRoutes.js");
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 
 
@@ -16,7 +17,10 @@ const groupRoutes = require("./routes/groupRoutes.js");
 const PORT = process.env.PORT || 8080;
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: FRONTEND_URL,
+  credentials: true,
+}));
 app.use(express.json());
 
 //connecting to database
@@ -30,7 +34,8 @@ const server = http.createServer(app);
 // Socket.io setup
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: FRONTEND_URL,
+    credentials: true,
   },
 });
 
@@ -49,7 +54,7 @@ app.use("/groups", groupRoutes);
 
 // start server
 server.listen(PORT, () => {
-  console.log("Server running on port 8080");
+  console.log(`Server running on port ${PORT}`);
 });
 
 const setupSockets = require("./socket/index.js");

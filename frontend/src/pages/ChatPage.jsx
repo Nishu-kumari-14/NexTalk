@@ -8,6 +8,7 @@ import useMessageStore from "../store/useMessageStore";
 import socket from "../socket";
 import "./ChatPage.css";
 import { useTyping } from "../context/TypingContext";
+import {API_URL} from "../config"
 
 
 
@@ -66,7 +67,7 @@ useEffect(() => {
  
         // new route — GET /messages/:conversationId with pagination
         const response = await fetch(
-          `http://localhost:8080/messages/${conversationId}?limit=50`,
+          `${API_URL}/messages/${conversationId}?limit=50`,
           { headers: { Authorization: `Bearer ${token}` } }
         );
  
