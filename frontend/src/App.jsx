@@ -18,10 +18,6 @@ function ProtectedRoute({ children }) {
 }
 
 function App() {
-
- 
-
-
   return (
     
      <>
